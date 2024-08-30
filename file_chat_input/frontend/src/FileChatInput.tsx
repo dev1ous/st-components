@@ -1,52 +1,44 @@
-import "./component.css"
+import "./component.css";
 
 import {
   Streamlit,
   StreamlitComponentBase,
   withStreamlitConnection,
-} from "streamlit-component-lib"
-import React, { ReactNode } from "react"
+} from "streamlit-component-lib";
+import React, { ReactNode } from "react";
 
 interface FileWithPreview extends File {
-  previewUrl: string
-  originalFile: File
+  previewUrl: string;
+  originalFile: File;
+  uploadedChunks: number;
+  isDownloading: boolean;
+  totalChunks: number; // Total chunks for the file
 }
 
 interface State {
-  isFocused: boolean
-  message: string
-  files: FileWithPreview[]
+  isFocused: boolean;
+  message: string;
+  files: FileWithPreview[];
+  isWindowExpanded: boolean; // State to manage the expand/collapse of the window
 }
 
-/**
- * This is a React-based component template. The `render()` function is called
- * automatically when your component should be re-rendered.
- */
 class FileChatInput extends StreamlitComponentBase<State> {
-  public state = { message: "", isFocused: false, files: [] }
+  public state = { message: "", isFocused: false, files: [], isWindowExpanded: false };
+
+  private baseChunkSize = 1024 * 1024; // 1 MB base chunk size
 
   public render = (): ReactNode => {
-    // Arguments that are passed to the plugin in Python are accessible
-    // via `this.props.args`.
-    const hint = this.props.args["hint"]
-    const previewHeight = "80px"
+    const hint = this.props.args["hint"];
+    const previewHeight = "80px";
+    const { theme } = this.props;
+    const style: React.CSSProperties = {};
 
-    // Streamlit sends us a theme object via props that we can use to ensure
-    // that our component has visuals that match the active theme in a
-    // streamlit app.
-    const { theme } = this.props
-    const style: React.CSSProperties = {}
-
-    // Maintain compatibility with older versions of Streamlit that don't send
-    // a theme object.
     if (theme) {
-      // Use the theme object to style our button border. Alternatively, the
-      // theme style is defined in CSS vars.
       const borderStyling = `1px solid ${
         this.state.isFocused ? theme.primaryColor : "gray"
-      }`
-      style.border = borderStyling
-      style.outline = borderStyling
+      }`;
+      style.border = borderStyling;
+      style.outline = borderStyling;
     }
 
     return (
@@ -59,56 +51,100 @@ class FileChatInput extends StreamlitComponentBase<State> {
           justifyContent: "space-between",
         }}
       >
+        {/* Collapsible Window */}
         <div
           style={{
-            height: previewHeight,
-            display: "flex", // Ensures horizontal layout
-            flexDirection: "row", // Explicitly set to row for horizontal stacking
+            maxHeight: this.state.isWindowExpanded ? "200px" : "0px",
+            overflow: "hidden",
+            transition: "max-height 0.3s ease-out",
             width: "100%",
-            alignItems: "center", // Align items vertically in the center
-            justifyContent: "flex-start", // Align items to the start of the container
+            backgroundColor: "#f8f9fa",
+            border: "1px solid #ddd",
+            marginBottom: "10px",
           }}
         >
-          {this.state.files.map((file: FileWithPreview, index) => (
-            <div
-              key={index}
-              style={{
-                position: "relative",
-                display: "inline-block",
-                marginRight: "5px",
-              }}
-            >
-              <img
-                src={file.previewUrl}
-                style={{ maxWidth: previewHeight, maxHeight: previewHeight }}
-                alt="preview"
-              />
-              <button
+          <div
+            style={{
+              display: "flex",
+              flexDirection: "row",
+              width: "100%",
+              alignItems: "center",
+              padding: "5px",
+              justifyContent: "flex-start",
+            }}
+          >
+            {this.state.files.map((file: FileWithPreview, index) => (
+              <div
+                key={index}
                 style={{
-                  position: "absolute",
-                  top: "0",
-                  right: "0",
-                  width: "20px", // Set a fixed width
-                  height: "20px", // Set a fixed height to match the width
-                  borderRadius: "50%", // Make the button round
+                  position: "relative",
                   display: "flex",
                   alignItems: "center",
-                  justifyContent: "center",
-                  padding: "0", // Remove padding to center the '✖' symbol
+                  marginRight: "5px",
                 }}
-                onClick={() => this.removeFile(file)}
               >
-                ✖
-              </button>
-            </div>
-          ))}
+                <img
+                  src={file.previewUrl}
+                  style={{ maxWidth: previewHeight, maxHeight: previewHeight }}
+                  alt="preview"
+                />
+                {file.isDownloading && (
+                  <div
+                    style={{
+                      width: "15px",
+                      height: "15px",
+                      borderRadius: "50%",
+                      backgroundColor: "green",
+                      marginLeft: "5px",
+                      animation: "spin 1s linear infinite",
+                    }}
+                  />
+                )}
+                <button
+                  style={{
+                    position: "absolute",
+                    top: "0",
+                    right: "0",
+                    width: "20px",
+                    height: "20px",
+                    borderRadius: "50%",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    padding: "0",
+                  }}
+                  onClick={() => this.removeFile(file)}
+                >
+                  ✖
+                </button>
+              </div>
+            ))}
+          </div>
         </div>
 
+        {/* Button to toggle the window */}
+        <button
+          style={{
+            background: "none",
+            border: "none",
+            cursor: "pointer",
+            marginBottom: "5px",
+          }}
+          onClick={() =>
+            this.setState((prevState) => ({
+              isWindowExpanded: !prevState.isWindowExpanded,
+            }))
+          }
+        >
+          {this.state.isWindowExpanded ? "⬆️" : "⬇️"}
+        </button>
+
+        {/* Chat Input Section */}
         <div
           style={{
             display: "flex",
-            flexDirection: "row", // Maintain row layout for the controls
-            width: "100%", // Expand the container to full width
+            flexDirection: "row",
+            width: "100%",
             alignItems: "center",
             justifyContent: "space-between",
           }}
@@ -124,8 +160,8 @@ class FileChatInput extends StreamlitComponentBase<State> {
           <button
             className="message-input__button"
             onClick={() => {
-              const fileInput = document.getElementById("fileInput")
-              if (fileInput) fileInput.click()
+              const fileInput = document.getElementById("fileInput");
+              if (fileInput) fileInput.click();
             }}
           >
             📎
@@ -134,11 +170,10 @@ class FileChatInput extends StreamlitComponentBase<State> {
             type="text"
             className="message-input__input"
             placeholder={hint}
-            // style={{ flexGrow: 1, margin: '0 10px' }}
             onChange={this.handleMessageChange}
             onKeyDown={(e) => {
               if (e.key === "Enter") {
-                this.onClicked()
+                this.onClicked();
               }
             }}
             value={this.state.message}
@@ -152,89 +187,118 @@ class FileChatInput extends StreamlitComponentBase<State> {
           </button>
         </div>
       </div>
-    )
-  }
+    );
+  };
+
   private resetFileInput = (): void => {
-    const fileInput = document.getElementById("fileInput") as HTMLInputElement
+    const fileInput = document.getElementById("fileInput") as HTMLInputElement;
     if (fileInput) {
-      fileInput.value = "" // Clear the file input to allow re-adding the same file
+      fileInput.value = "";
     }
-  }
+  };
+
   private removeFile = (fileToRemove: FileWithPreview): void => {
-    URL.revokeObjectURL(fileToRemove.previewUrl)
+    URL.revokeObjectURL(fileToRemove.previewUrl);
     this.setState((prevState: any) => ({
       files: prevState.files.filter(
         (file: FileWithPreview) => file !== fileToRemove
       ),
-    }))
+    }));
 
-    // Reset the file input after removing a file
-    this.resetFileInput()
-  }
+    this.resetFileInput();
+  };
 
   private handleFileChange = (
     event: React.ChangeEvent<HTMLInputElement>
   ): void => {
     const filesWithPreview = event.target.files
       ? Array.from(event.target.files).map((file) => {
-          const previewUrl = URL.createObjectURL(file)
-          return { ...file, previewUrl, originalFile: file } // Store the original file separately
+          const previewUrl = URL.createObjectURL(file);
+          const totalChunks = Math.ceil(file.size / this.baseChunkSize); // Calculate total chunks
+          return {
+            ...file,
+            previewUrl,
+            originalFile: file,
+            uploadedChunks: 0,
+            isDownloading: true,
+            totalChunks,
+          };
         })
-      : []
+      : [];
 
     this.setState((prevState: any) => ({
       files: [...prevState.files, ...filesWithPreview],
-    }))
-  }
+    }));
+  };
 
   private handleMessageChange = (
     event: React.ChangeEvent<HTMLInputElement>
   ): void => {
-    this.setState({ message: event.target.value })
-  }
+    this.setState({ message: event.target.value });
+  };
+
+  private calculateChunkSize = (numFiles: number): number => {
+    // Dynamically adjust chunk size based on the number of files
+    // Reduce chunk size as the number of files increases
+    return Math.max(this.baseChunkSize / numFiles, 1024 * 256); // Minimum chunk size is 256 KB
+  };
+
+  private uploadChunks = async (file: FileWithPreview): Promise<void> => {
+    const fileSize = file.size;
+    let offset = 0;
+    const chunkSize = this.calculateChunkSize(this.state.files.length); // Adjust chunk size dynamically
+
+    while (offset < fileSize) {
+      const chunk = file.slice(offset, offset + chunkSize);
+      const chunkContent = await this.fileToBase64(chunk);
+      Streamlit.setComponentValue({
+        chunkContent,
+        chunkIndex: offset / chunkSize,
+        fileName: file.name,
+        isLastChunk: offset + chunkSize >= fileSize,
+      });
+      offset += chunkSize;
+      file.uploadedChunks += 1;
+
+      // Update file's progress
+      this.setState((prevState: State) => ({
+        files: prevState.files.map((f) =>
+          f === file ? { ...f, uploadedChunks: file.uploadedChunks } : f
+        ),
+      }));
+    }
+
+    // Set the download status to false once upload is done
+    this.setState((prevState: State) => ({
+      files: prevState.files.map((f) =>
+        f === file ? { ...f, isDownloading: false } : f
+      ),
+    }));
+  };
 
   private onClicked = async (): Promise<void> => {
-    const { files, message } = this.state
+    const { files, message } = this.state;
     if (files.length > 0 || message) {
-      // Map over the files and convert each one to Base64
-      const filesDataPromises = files.map((fileWithPreview: FileWithPreview) =>
-        this.fileToBase64(fileWithPreview.originalFile).then((content) => ({
-          // Use originalFile here
-          name: fileWithPreview.name,
-          size: fileWithPreview.size,
-          type: fileWithPreview.type,
-          content,
-        }))
-      )
-
-      const filesData = await Promise.all(filesDataPromises)
-
-      Streamlit.setComponentValue({ files: filesData, message: message })
+      // Upload all files concurrently
+      await Promise.all(files.map((file) => this.uploadChunks(file)));
+      Streamlit.setComponentValue({ message });
     }
-    this.setState({ files: [], message: "" })
-    // Reset the file input to allow re-adding the same file after submission
-    this.resetFileInput()
+
+    this.setState({ files: [], message: "" });
+    this.resetFileInput();
     document
       .querySelectorAll('div[style*="position: relative;"]')
-      .forEach((element) => element.remove())
-  }
+      .forEach((element) => element.remove());
+  };
 
-  // Helper function to convert a file to a Base64 encoded string
-  // Note: This function returns a Promise
-  private fileToBase64 = (file: File): Promise<string> => {
-    console.log(file)
+  private fileToBase64 = (file: Blob): Promise<string> => {
     return new Promise((resolve, reject) => {
-      const reader = new FileReader()
-      reader.onload = () => resolve(reader.result as string)
-      reader.onerror = (error) => reject(error)
-      reader.readAsDataURL(file)
-    })
-  }
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result as string);
+      reader.onerror = (error) => reject(error);
+      reader.readAsDataURL(file);
+    });
+  };
 }
 
-// "withStreamlitConnection" is a wrapper function. It bootstraps the
-// connection between your component and the Streamlit app, and handles
-// passing arguments from Python -> Component.
-//
-// You don't need to edit withStreamlitConnection (but you're welcome to!).
-export default withStreamlitConnection(FileChatInput)
+export default withStreamlitConnection(FileChatInput);
